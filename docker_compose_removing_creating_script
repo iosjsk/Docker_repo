@@ -1,0 +1,46 @@
+#/bin/bash +x
+
+IFS=',' read -ra IP <<< ${Servers}
+if [ "${#IP[@]}" -eq 0 ];then 
+
+echo "you didn't select any server"
+else 
+
+cd /var/lib/jenkins/workspace/${Project_Name}/
+
+for server in "${IP[@]}";
+
+do 
+echo ${server}
+
+IFS='_' read -ra servername <<< "$server"
+
+echo ${servername}
+
+mkdir -p /var/lib/jenkins/workspace/${Directory}/${Project_Name}_${BUILD_NUMBER}
+cp -r * /var/lib/jenkins/workspace/${Directory}/${Project_Name}_${BUILD_NUMBER}
+cd /var/lib/jenkins/workspace/${Directory}/
+tar -cvzf ${Project_Name}_${BUILD_NUMBER}.tar.gz ${Project_Name}_${BUILD_NUMBER}
+
+scp -i /opt/devops.pem -r /var/lib/jenkins/workspace/${Directory}/${Project_Name}_${BUILD_NUMBER}.tar.gz devops@${servername[1]}:/opt/devops/
+ssh -i /opt/devops.pem -t devops@${servername[1]} "sudo tar -xvzf /opt/devops/${Project_Name}_${BUILD_NUMBER}.tar.gz -C /opt/devops/"
+ssh -i /opt/devops.pem -t devops@${servername[1]} "sudo rm -rf /opt/devops/${Project_Name}_${BUILD_NUMBER}.tar.gz"
+
+
+ssh -i /opt/devops.pem -t devops@${servername[1]} "docker-compose -p ${Project_Name}_$(( $BUILD_NUMBER - 1 )) -f /opt/devops/${Project_Name}_$(( $BUILD_NUMBER - 1 ))/compose/docker-compose.yml ps "
+count=$?
+if [ "$count" -eq "0" ];then
+
+ssh -i /opt/devops.pem -t devops@${servername[1]} "docker-compose -p ${Project_Name}_$(( $BUILD_NUMBER - 1 )) -f /opt/devops/${Project_Name}_$(( $BUILD_NUMBER - 1 ))/compose/docker-compose.yml down"
+
+else 
+
+echo "no containers are running "
+
+fi
+
+ssh -i /opt/devops.pem -t devops@${servername[1]} "sudo docker-compose -p ${Project_Name}_${BUILD_NUMBER} -f /opt/devops/${Project_Name}_${BUILD_NUMBER}/compose/docker-compose.yml up -d" 
+
+done
+
+fi
